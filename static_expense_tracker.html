@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Expense Tracker (Static)</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; background: var(--bg, #f8f9fa); color: var(--fg, #222); transition: background 0.3s, color 0.3s; }
+        .container { display: flex; min-height: 100vh; }
+        .sidebar {
+            width: 220px;
+            background: #2c3e50;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 2em 1em 1em 1em;
+        }
+        .sidebar h2 { margin-bottom: 1.5em; font-size: 1.3em; }
+        .sidebar .total {
+            font-size: 1.2em;
+            margin-bottom: 2em;
+            background: #1abc9c;
+            padding: 0.7em 1.2em;
+            border-radius: 8px;
+            color: #fff;
+        }
+        .category-list { width: 100%; }
+        .category-item {
+            display: flex;
+            align-items: center;
+            padding: 0.7em 1em;
+            margin-bottom: 0.5em;
+            border-radius: 6px;
+            background: #34495e;
+            color: #fff;
+            font-size: 1em;
+        }
+        .category-item i { margin-right: 0.8em; font-size: 1.2em; }
+        .main-content { flex: 1; padding: 2em; }
+        h1 { color: #2c3e50; margin-top: 0; }
+        form, table { margin-bottom: 2em; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+        th { background: #f4f4f4; }
+        .theme-toggle, .chart-toggle { float: right; margin-left: 1em; margin-top: -2.5em; }
+        .dark-theme { --bg: #23272f; --fg: #f8f9fa; }
+        .dark-theme th { background: #2c3e50; color: #fff; }
+        .dark-theme table, .dark-theme th, .dark-theme td { border-color: #444; }
+        button, .theme-toggle, .chart-toggle { background: #2c3e50; color: #fff; border: none; padding: 0.5em 1em; border-radius: 4px; cursor: pointer; margin-bottom: 1em; }
+        button:hover, .theme-toggle:hover, .chart-toggle:hover { background: #1abc9c; }
+        .chart-container { max-width: 600px; margin: 2em auto; display: none; }
+        .chart-container.active { display: block; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <aside class="sidebar">
+            <h2>Categories</h2>
+            <div class="total" id="total-expenses">Total: ₹0</div>
+            <div class="category-list" id="category-list">
+                <div class="category-item" data-cat="Food"><i class="fa-solid fa-utensils"></i> Food <span class="cat-total" style="margin-left:auto;">₹0</span></div>
+                <div class="category-item" data-cat="Transport"><i class="fa-solid fa-bus"></i> Transport <span class="cat-total" style="margin-left:auto;">₹0</span></div>
+                <div class="category-item" data-cat="Entertainment"><i class="fa-solid fa-film"></i> Entertainment <span class="cat-total" style="margin-left:auto;">₹0</span></div>
+                <div class="category-item" data-cat="Shopping"><i class="fa-solid fa-bag-shopping"></i> Shopping <span class="cat-total" style="margin-left:auto;">₹0</span></div>
+                <div class="category-item" data-cat="Bills"><i class="fa-solid fa-file-invoice-dollar"></i> Bills <span class="cat-total" style="margin-left:auto;">₹0</span></div>
+            </div>
+        </aside>
+        <main class="main-content">
+            <button class="theme-toggle" onclick="toggleTheme()">Toggle Theme</button>
+            <button class="chart-toggle" onclick="toggleChart()">Show/Hide Chart</button>
+            <h1>Expense Tracker</h1>
+            <form id="expense-form">
+                <input type="number" name="amount" placeholder="Amount" required min="0.01" step="0.01">
+                <select name="category">
+                    <option>Food</option>
+                    <option>Transport</option>
+                    <option>Entertainment</option>
+                    <option>Shopping</option>
+                    <option>Bills</option>
+                </select>
+                <input type="date" name="date" id="date-input" required>
+                <input type="text" name="description" placeholder="Description">
+                <button type="submit">Add Expense</button>
+            </form>
+            <table id="expenses-table">
+                <thead>
+                    <tr><th>Amount</th><th>Category</th><th>Date</th><th>Description</th></tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+            <div class="chart-container" id="chart-container">
+                <canvas id="categoryChart"></canvas>
+            </div>
+        </main>
+    </div>
+    <script>
+        // Set today's date as default for the date input
+        document.addEventListener('DOMContentLoaded', function() {
+            const dateInput = document.getElementById('date-input');
+            const today = new Date().toISOString().split('T')[0];
+            dateInput.value = today;
+        });
+        function toggleTheme() {
+            document.body.classList.toggle('dark-theme');
+            localStorage.setItem('theme', document.body.classList.contains('dark-theme') ? 'dark' : 'light');
+        }
+        if (localStorage.getItem('theme') === 'dark') document.body.classList.add('dark-theme');
+
+        function toggleChart() {
+            const chartDiv = document.getElementById('chart-container');
+            chartDiv.classList.toggle('active');
+        }
+
+        let chart;
+        // For static HTML, use localStorage to store expenses
+        function getExpenses() {
+            return JSON.parse(localStorage.getItem('expenses') || '[]');
+        }
+        function saveExpenses(expenses) {
+            localStorage.setItem('expenses', JSON.stringify(expenses));
+        }
+        function fetchExpenses() {
+            const data = getExpenses();
+            const tbody = document.querySelector('#expenses-table tbody');
+            tbody.innerHTML = '';
+            let total = 0;
+            const catTotals = { Food: 0, Transport: 0, Entertainment: 0, Shopping: 0, Bills: 0 };
+            data.forEach(exp => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td>₹${exp.amount}</td><td>${exp.category}</td><td>${exp.date}</td><td>${exp.description}</td>`;
+                tbody.appendChild(tr);
+                total += parseFloat(exp.amount);
+                if (catTotals.hasOwnProperty(exp.category)) {
+                    catTotals[exp.category] += parseFloat(exp.amount);
+                }
+            });
+            document.getElementById('total-expenses').textContent = `Total: ₹${total.toFixed(2)}`;
+            // Update sidebar category totals
+            Object.keys(catTotals).forEach(cat => {
+                const el = document.querySelector(`.category-item[data-cat='${cat}'] .cat-total`);
+                if (el) el.textContent = `₹${catTotals[cat].toFixed(2)}`;
+            });
+            renderChart(data);
+        }
+        document.getElementById('expense-form').onsubmit = function(e) {
+            e.preventDefault();
+            const form = e.target;
+            const expense = {
+                amount: form.amount.value,
+                category: form.category.value,
+                date: form.date.value,
+                description: form.description.value
+            };
+            const expenses = getExpenses();
+            expenses.push(expense);
+            saveExpenses(expenses);
+            form.reset();
+            // Reset date to today after form reset
+            document.getElementById('date-input').value = new Date().toISOString().split('T')[0];
+            fetchExpenses();
+        };
+
+        function renderChart(expenses) {
+            const categories = {};
+            expenses.forEach(exp => {
+                categories[exp.category] = (categories[exp.category] || 0) + parseFloat(exp.amount);
+            });
+            const ctx = document.getElementById('categoryChart').getContext('2d');
+            if (chart) chart.destroy();
+            chart = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: Object.keys(categories),
+                    datasets: [{
+                        data: Object.values(categories),
+                        backgroundColor: [
+                            '#1abc9c', '#3498db', '#9b59b6', '#e67e22', '#e74c3c', '#f1c40f', '#2ecc71'
+                        ],
+                    }]
+                },
+                options: {
+                    plugins: {
+                        legend: { labels: { color: getComputedStyle(document.body).color } }
+                    }
+                }
+            });
+        }
+        fetchExpenses();
+    </script>
+</body>
+</html>
